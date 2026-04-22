@@ -174,31 +174,18 @@ jobs:
     name: Integration Test
     runs-on: ubuntu-latest
     needs: [test, build]
-    services:
-      registry:
-        image: registry:2
-        ports:
-          - 5000:5000
     steps:
     - uses: actions/checkout@v4
     
-    - name: Pull images
+    - name: Build images
       run: |
-        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-api:main-${{ github.sha }}
-        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:main-${{ github.sha }}
-        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-worker:main-${{ github.sha }}
+        docker build -t job-processing-api:latest ./api
+        docker build -t job-processing-frontend:latest ./frontend
+        docker build -t job-processing-worker:latest ./worker
     
-    - name: Update docker-compose with built images
+    - name: Start services with docker-compose
       run: |
-        sed -i 's|build:|image: localhost:5000/job-processing-|g' docker-compose.yml
-        sed -i 's|context: ./api|api:main-${{ github.sha }}|g' docker-compose.yml
-        sed -i 's|context: ./frontend|frontend:main-${{ github.sha }}|g' docker-compose.yml
-        sed -i 's|context: ./worker|worker:main-${{ github.sha }}|g' docker-compose.yml
-        sed -i '/dockerfile: Dockerfile/d' docker-compose.yml
-    
-    - name: Start services
-      run: |
-        docker-compose up -d
+        docker-compose up -d --build
     
     - name: Wait for services to be healthy
       run: |
@@ -256,27 +243,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [integration, security]
     if: github.ref == 'refs/heads/main'
-    services:
-      registry:
-        image: registry:2
-        ports:
-          - 5000:5000
     steps:
     - uses: actions/checkout@v4
     
-    - name: Pull latest images
+    - name: Build latest images
       run: |
-        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-api:main-${{ github.sha }}
-        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:main-${{ github.sha }}
-        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-worker:main-${{ github.sha }}
-    
-    - name: Update docker-compose with new images
-      run: |
-        sed -i 's|build:|image: localhost:5000/job-processing-|g' docker-compose.yml
-        sed -i 's|context: ./api|api:main-${{ github.sha }}|g' docker-compose.yml
-        sed -i 's|context: ./frontend|frontend:main-${{ github.sha }}|g' docker-compose.yml
-        sed -i 's|context: ./worker|worker:main-${{ github.sha }}|g' docker-compose.yml
-        sed -i '/dockerfile: Dockerfile/d' docker-compose.yml
+        docker build -t job-processing-api:latest ./api
+        docker build -t job-processing-frontend:latest ./frontend
+        docker build -t job-processing-worker:latest ./worker
     
     - name: Deploy with rolling update
       run: |
