@@ -20,6 +20,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Redis connection with environment variables
@@ -37,6 +38,11 @@ except redis.ConnectionError as e:
 @app.options("/jobs")
 def options_jobs():
     """Handle OPTIONS requests for CORS preflight"""
+    return {"message": "OPTIONS allowed"}
+
+@app.options("/jobs/{job_id}")
+def options_job_by_id():
+    """Handle OPTIONS requests for job by ID"""
     return {"message": "OPTIONS allowed"}
 
 @app.get("/health")
