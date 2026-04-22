@@ -3,7 +3,6 @@ version: '3.8'
 services:
   redis:
     image: redis:7-alpine
-    container_name: job-redis
     restart: unless-stopped
     networks:
       - job-network
@@ -25,7 +24,6 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: job-api
     restart: unless-stopped
     networks:
       - job-network
@@ -53,7 +51,6 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile
-    container_name: job-worker
     restart: unless-stopped
     networks:
       - job-network
@@ -80,7 +77,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: job-frontend
     restart: unless-stopped
     networks:
       - job-network
