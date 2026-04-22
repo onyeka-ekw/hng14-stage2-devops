@@ -39,7 +39,7 @@ jobs:
     
     - name: Install ESLint
       run: |
-        cd frontend && npm install eslint
+        cd frontend && npm install
     
     - name: Lint JavaScript code
       run: |
