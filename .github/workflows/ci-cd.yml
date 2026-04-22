@@ -1,0 +1,351 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: localhost:5000
+  IMAGE_PREFIX: job-processing
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Python linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8
+    
+    - name: Lint Python code
+      run: |
+        flake8 api/main.py worker/worker.py --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 api/main.py worker/worker.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install ESLint
+      run: |
+        cd frontend && npm install eslint
+    
+    - name: Lint JavaScript code
+      run: |
+        cd frontend && npx eslint app.js
+    
+    - name: Install hadolint
+      run: |
+        wget -O hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+        chmod +x hadolint
+    
+    - name: Lint Dockerfiles
+      run: |
+        ./hadolint api/Dockerfile
+        ./hadolint frontend/Dockerfile
+        ./hadolint worker/Dockerfile
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        cd api
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run tests with coverage
+      run: |
+        cd api
+        pytest --cov=. --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-reports
+        path: api/htmlcov/
+        retention-days: 30
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to local registry
+      uses: docker/login-action@v3
+      with:
+        registry: localhost:5000
+        username: test
+        password: test
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
+        tags: |
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push API image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./api
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Build and push Frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Build and push Worker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./worker
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Trivy
+      run: |
+        sudo apt-get update
+        sudo apt-get install wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy
+    
+    - name: Run Trivy vulnerability scanner
+      run: |
+        trivy image --format sarif --output api-scan.sarif localhost:5000/${{ env.IMAGE_PREFIX }}-api:main-${{ github.sha }}
+        trivy image --format sarif --output frontend-scan.sarif localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:main-${{ github.sha }}
+        trivy image --format sarif --output worker-scan.sarif localhost:5000/${{ env.IMAGE_PREFIX }}-worker:main-${{ github.sha }}
+    
+    - name: Check for CRITICAL vulnerabilities
+      run: |
+        if trivy image --exit-code 1 --severity CRITICAL localhost:5000/${{ env.IMAGE_PREFIX }}-api:main-${{ github.sha }}; then
+          echo "CRITICAL vulnerabilities found"
+          exit 1
+        fi
+        if trivy image --exit-code 1 --severity CRITICAL localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:main-${{ github.sha }}; then
+          echo "CRITICAL vulnerabilities found"
+          exit 1
+        fi
+        if trivy image --exit-code 1 --severity CRITICAL localhost:5000/${{ env.IMAGE_PREFIX }}-worker:main-${{ github.sha }}; then
+          echo "CRITICAL vulnerabilities found"
+          exit 1
+        fi
+    
+    - name: Upload SARIF files
+      uses: actions/upload-artifact@v3
+      with:
+        name: sarif-reports
+        path: "*.sarif"
+        retention-days: 30
+
+  integration:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Pull images
+      run: |
+        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-api:main-${{ github.sha }}
+        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:main-${{ github.sha }}
+        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-worker:main-${{ github.sha }}
+    
+    - name: Update docker-compose with built images
+      run: |
+        sed -i 's|build:|image: localhost:5000/job-processing-|g' docker-compose.yml
+        sed -i 's|context: ./api|api:main-${{ github.sha }}|g' docker-compose.yml
+        sed -i 's|context: ./frontend|frontend:main-${{ github.sha }}|g' docker-compose.yml
+        sed -i 's|context: ./worker|worker:main-${{ github.sha }}|g' docker-compose.yml
+        sed -i '/dockerfile: Dockerfile/d' docker-compose.yml
+    
+    - name: Start services
+      run: |
+        docker-compose up -d
+    
+    - name: Wait for services to be healthy
+      run: |
+        timeout 300 bash -c 'until curl -f http://localhost:3000/health; do sleep 5; done'
+        timeout 300 bash -c 'until curl -f http://localhost:8000/health; do sleep 5; done'
+    
+    - name: Run integration tests
+      run: |
+        # Submit a job
+        job_response=$(curl -s -X POST http://localhost:3000/submit)
+        job_id=$(echo $job_response | jq -r '.job_id')
+        
+        if [ -z "$job_id" ] || [ "$job_id" = "null" ]; then
+          echo "Failed to submit job"
+          exit 1
+        fi
+        
+        echo "Job submitted: $job_id"
+        
+        # Poll for job completion
+        for i in {1..30}; do
+          status_response=$(curl -s http://localhost:3000/status/$job_id)
+          status=$(echo $status_response | jq -r '.status')
+          
+          echo "Job status: $status"
+          
+          if [ "$status" = "completed" ]; then
+            echo "Job completed successfully"
+            break
+          fi
+          
+          if [ "$status" = "failed" ]; then
+            echo "Job failed"
+            exit 1
+          fi
+          
+          sleep 2
+        done
+        
+        # Check final status
+        final_status=$(curl -s http://localhost:3000/status/$job_id | jq -r '.status')
+        if [ "$final_status" != "completed" ]; then
+          echo "Job did not complete in time. Final status: $final_status"
+          exit 1
+        fi
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose down -v
+        docker system prune -f
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [integration, security]
+    if: github.ref == 'refs/heads/main'
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Pull latest images
+      run: |
+        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-api:main-${{ github.sha }}
+        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:main-${{ github.sha }}
+        docker pull localhost:5000/${{ env.IMAGE_PREFIX }}-worker:main-${{ github.sha }}
+    
+    - name: Update docker-compose with new images
+      run: |
+        sed -i 's|build:|image: localhost:5000/job-processing-|g' docker-compose.yml
+        sed -i 's|context: ./api|api:main-${{ github.sha }}|g' docker-compose.yml
+        sed -i 's|context: ./frontend|frontend:main-${{ github.sha }}|g' docker-compose.yml
+        sed -i 's|context: ./worker|worker:main-${{ github.sha }}|g' docker-compose.yml
+        sed -i '/dockerfile: Dockerfile/d' docker-compose.yml
+    
+    - name: Deploy with rolling update
+      run: |
+        # Start new containers
+        docker-compose up -d --scale api=2 --scale frontend=2 --scale worker=2
+        
+        # Wait for new containers to be healthy
+        sleep 30
+        
+        # Check health of new containers
+        new_api_healthy=false
+        new_frontend_healthy=false
+        new_worker_healthy=false
+        
+        for i in {1..12}; do
+          if curl -f http://localhost:8000/health >/dev/null 2>&1; then
+            new_api_healthy=true
+          fi
+          if curl -f http://localhost:3000/health >/dev/null 2>&1; then
+            new_frontend_healthy=true
+          fi
+          
+          if [ "$new_api_healthy" = true ] && [ "$new_frontend_healthy" = true ]; then
+            break
+          fi
+          sleep 5
+        done
+        
+        if [ "$new_api_healthy" != true ] || [ "$new_frontend_healthy" != true ]; then
+          echo "New containers failed health check, aborting deployment"
+          docker-compose up -d --scale api=1 --scale frontend=1 --scale worker=1
+          exit 1
+        fi
+        
+        # Scale down to single instances
+        docker-compose up -d --scale api=1 --scale frontend=1 --scale worker=1
+        
+        echo "Deployment completed successfully"
+    
+    - name: Verify deployment
+      run: |
+        # Test the deployed application
+        job_response=$(curl -s -X POST http://localhost:3000/submit)
+        job_id=$(echo $job_response | jq -r '.job_id')
+        
+        if [ -z "$job_id" ] || [ "$job_id" = "null" ]; then
+          echo "Deployment verification failed"
+          exit 1
+        fi
+        
+        echo "Deployment verified successfully"
