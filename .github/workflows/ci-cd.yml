@@ -246,16 +246,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Build latest images
-      run: |
-        docker build -t job-processing-api:latest ./api
-        docker build -t job-processing-frontend:latest ./frontend
-        docker build -t job-processing-worker:latest ./worker
-    
     - name: Deploy with rolling update
       run: |
-        # Start new containers
-        docker compose up -d --scale api=2 --scale frontend=2 --scale worker=2
+        # Build and start new containers
+        docker compose up -d --build --scale api=2 --scale frontend=2 --scale worker=2
         
         # Wait for new containers to be healthy
         sleep 30
