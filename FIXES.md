@@ -1,4 +1,4 @@
-# Fixes Applied
+# Fixes
 
 ## API (api/main.py)
 
