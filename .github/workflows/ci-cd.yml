@@ -246,43 +246,37 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Deploy with rolling update
+    - name: Deploy
       run: |
-        # Build and start new containers
-        docker compose up -d --build --scale api=2 --scale frontend=2 --scale worker=2
+        # Build and start containers
+        docker compose up -d --build
         
-        # Wait for new containers to be healthy
-        sleep 30
+        # Wait for services to be healthy
+        sleep 10
         
-        # Check health of new containers
-        new_api_healthy=false
-        new_frontend_healthy=false
-        new_worker_healthy=false
-        
+        # Check health
         for i in {1..12}; do
+          api_healthy=false
+          frontend_healthy=false
+          
           if curl -f http://localhost:8000/health >/dev/null 2>&1; then
-            new_api_healthy=true
+            api_healthy=true
           fi
           if curl -f http://localhost:3000/health >/dev/null 2>&1; then
-            new_frontend_healthy=true
+            frontend_healthy=true
           fi
           
-          if [ "$new_api_healthy" = true ] && [ "$new_frontend_healthy" = true ]; then
+          if [ "$api_healthy" = true ] && [ "$frontend_healthy" = true ]; then
+            echo "Deployment successful - all services healthy"
             break
           fi
           sleep 5
         done
         
-        if [ "$new_api_healthy" != true ] || [ "$new_frontend_healthy" != true ]; then
-          echo "New containers failed health check, aborting deployment"
-          docker compose up -d --scale api=1 --scale frontend=1 --scale worker=1
+        if [ "$api_healthy" != true ] || [ "$frontend_healthy" != true ]; then
+          echo "Deployment failed - services not healthy"
           exit 1
         fi
-        
-        # Scale down to single instances
-        docker compose up -d --scale api=1 --scale frontend=1 --scale worker=1
-        
-        echo "Deployment completed successfully"
     
     - name: Verify deployment
       run: |
