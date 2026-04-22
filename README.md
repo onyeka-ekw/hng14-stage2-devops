@@ -1,4 +1,4 @@
-# TASK TWO
+# STAGE TWO TASK
 
 A production-ready multi-service job processing application with Redis queue, FastAPI backend, Node.js frontend, and Python worker.
 
