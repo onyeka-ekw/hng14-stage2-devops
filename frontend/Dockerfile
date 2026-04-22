@@ -13,22 +13,19 @@ RUN npm ci --only=production && npm cache clean --force
 # Production stage
 FROM node:18-alpine
 
-# Create non-root user
+# Create non-root user and set working directory
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Set working directory
+    adduser -S nodejs -u 1001 && \
+    mkdir -p /app
 WORKDIR /app
 
 # Copy node modules from builder stage
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy application code
+# Copy application code and set permissions
 COPY . .
-
-# Set permissions
-RUN chown -R nodejs:nodejs /app
-RUN chmod -R 755 /app
+RUN chown -R nodejs:nodejs /app && \
+    chmod -R 755 /app
 
 # Switch to non-root user
 USER nodejs

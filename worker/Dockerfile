@@ -29,8 +29,8 @@ COPY --from=builder /root/.local /home/appuser/.local
 COPY . .
 
 # Set permissions
-RUN chown -R appuser:appuser /app
-RUN chmod -R 755 /app
+RUN chown -R appuser:appuser /app && \
+    chmod -R 755 /app
 
 # Switch to non-root user
 USER appuser
