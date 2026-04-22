@@ -34,6 +34,11 @@ except redis.ConnectionError as e:
     logger.error(f"Failed to connect to Redis: {e}")
     r = None
 
+@app.options("/jobs")
+def options_jobs():
+    """Handle OPTIONS requests for CORS preflight"""
+    return {"message": "OPTIONS allowed"}
+
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
