@@ -103,38 +103,50 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
-    - name: Build and push API image
+    - name: Build API image
       uses: docker/build-push-action@v5
       with:
         context: ./api
-        push: true
-        tags: |
-          localhost:5000/${{ env.IMAGE_PREFIX }}-api:latest
-          localhost:5000/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+        push: false
+        load: true
+        tags: ${{ env.IMAGE_PREFIX }}-api:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
     
-    - name: Build and push Frontend image
+    - name: Build Frontend image
       uses: docker/build-push-action@v5
       with:
         context: ./frontend
-        push: true
-        tags: |
-          localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:latest
-          localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+        push: false
+        load: true
+        tags: ${{ env.IMAGE_PREFIX }}-frontend:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
     
-    - name: Build and push Worker image
+    - name: Build Worker image
       uses: docker/build-push-action@v5
       with:
         context: ./worker
-        push: true
-        tags: |
-          localhost:5000/${{ env.IMAGE_PREFIX }}-worker:latest
-          localhost:5000/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
+        push: false
+        load: true
+        tags: ${{ env.IMAGE_PREFIX }}-worker:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
+    
+    - name: Tag and push images to registry
+      run: |
+        docker tag ${{ env.IMAGE_PREFIX }}-api:latest localhost:5000/${{ env.IMAGE_PREFIX }}-api:latest
+        docker tag ${{ env.IMAGE_PREFIX }}-api:latest localhost:5000/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+        docker tag ${{ env.IMAGE_PREFIX }}-frontend:latest localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:latest
+        docker tag ${{ env.IMAGE_PREFIX }}-frontend:latest localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+        docker tag ${{ env.IMAGE_PREFIX }}-worker:latest localhost:5000/${{ env.IMAGE_PREFIX }}-worker:latest
+        docker tag ${{ env.IMAGE_PREFIX }}-worker:latest localhost:5000/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
+        docker push localhost:5000/${{ env.IMAGE_PREFIX }}-api:latest
+        docker push localhost:5000/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+        docker push localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:latest
+        docker push localhost:5000/${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+        docker push localhost:5000/${{ env.IMAGE_PREFIX }}-worker:latest
+        docker push localhost:5000/${{ env.IMAGE_PREFIX }}-worker:${{ github.sha }}
 
   security:
     name: Security Scan
