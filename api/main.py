@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import redis
 import uuid
 import os
@@ -38,12 +39,22 @@ except redis.ConnectionError as e:
 @app.options("/jobs")
 def options_jobs():
     """Handle OPTIONS requests for CORS preflight"""
-    return {"message": "OPTIONS allowed"}
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*"
+    }
+    return JSONResponse(content={"message": "OPTIONS allowed"}, headers=headers)
 
 @app.options("/jobs/{job_id}")
 def options_job_by_id():
     """Handle OPTIONS requests for job by ID"""
-    return {"message": "OPTIONS allowed"}
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*"
+    }
+    return JSONResponse(content={"message": "OPTIONS allowed"}, headers=headers)
 
 @app.get("/health")
 def health_check():
