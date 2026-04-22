@@ -183,9 +183,9 @@ jobs:
         docker build -t job-processing-frontend:latest ./frontend
         docker build -t job-processing-worker:latest ./worker
     
-    - name: Start services with docker-compose
+    - name: Start services with docker compose
       run: |
-        docker-compose up -d --build
+        docker compose up -d --build
     
     - name: Wait for services to be healthy
       run: |
@@ -235,7 +235,7 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker-compose down -v
+        docker compose down -v
         docker system prune -f
 
   deploy:
@@ -255,7 +255,7 @@ jobs:
     - name: Deploy with rolling update
       run: |
         # Start new containers
-        docker-compose up -d --scale api=2 --scale frontend=2 --scale worker=2
+        docker compose up -d --scale api=2 --scale frontend=2 --scale worker=2
         
         # Wait for new containers to be healthy
         sleep 30
@@ -281,12 +281,12 @@ jobs:
         
         if [ "$new_api_healthy" != true ] || [ "$new_frontend_healthy" != true ]; then
           echo "New containers failed health check, aborting deployment"
-          docker-compose up -d --scale api=1 --scale frontend=1 --scale worker=1
+          docker compose up -d --scale api=1 --scale frontend=1 --scale worker=1
           exit 1
         fi
         
         # Scale down to single instances
-        docker-compose up -d --scale api=1 --scale frontend=1 --scale worker=1
+        docker compose up -d --scale api=1 --scale frontend=1 --scale worker=1
         
         echo "Deployment completed successfully"
     
