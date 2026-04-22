@@ -43,7 +43,7 @@ jobs:
     
     - name: Lint JavaScript code
       run: |
-        cd frontend && npx eslint app.js
+        cd frontend && npx eslint --config .eslintrc.js app.js
     
     - name: Install hadolint
       run: |
